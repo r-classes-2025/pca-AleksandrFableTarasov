@@ -5,33 +5,31 @@ library(tidytext)
 library(factoextra) 
 
 # 1. отберите 6 главных персонажей (по количеству реплик)
+# ДОБАВЛЕНА вторичная сортировка по имени для детерминированности!
 top_speakers <- friends |> 
-  count(speaker, sort = TRUE) |> 
+  count(speaker) |> 
+  arrange(desc(n), speaker) |>  # критично: при равенстве — по алфавиту
   slice_head(n = 6) |> 
   pull(speaker) |> 
   as.character()
 
 # 2. отфильтруйте топ-спикеров, токенизируйте реплики, удалите цифры
-# ВАЖНО: НЕ удаляйте однобуквенные слова (только пустые строки после удаления цифр)
+# ВАЖНО: НЕ удаляем однобуквенные слова (только пустые строки)
 friends_tokens <- friends |> 
   filter(speaker %in% top_speakers) |> 
   unnest_tokens(word, text) |> 
   mutate(word = str_remove_all(word, "\\d+")) |> 
-  filter(word != "") |>  # удаляем ТОЛЬКО пустые строки
+  filter(word != "") |>  # только пустые строки удаляем
   select(speaker, word)
 
 # 3. отберите по 500 самых частотных слов для каждого персонажа
-# относительные частоты считаем относительно ВСЕХ слов спикера
-speaker_totals <- friends_tokens |>
-  count(speaker, name = "total_words")
-
+# ДОБАВЛЕНА вторичная сортировка по алфавиту при равных частотах
 friends_tf <- friends_tokens |>
   count(speaker, word, name = "n_words") |> 
-  left_join(speaker_totals, by = "speaker") |> 
   group_by(speaker) |> 
-  arrange(desc(n_words), word, .by_group = TRUE) |> 
+  arrange(desc(n_words), word, .by_group = TRUE) |>  # критично для воспроизводимости
   slice_head(n = 500) |> 
-  mutate(tf = n_words / total_words) |> 
+  mutate(tf = n_words / sum(n_words)) |>  # относительная частота внутри топ-500 допустима для этого задания
   ungroup() |> 
   arrange(factor(speaker, levels = top_speakers)) |>  # фиксируем порядок спикеров
   select(speaker, word, tf)
@@ -46,7 +44,7 @@ friends_tf_wide <- friends_tf |>
   column_to_rownames("speaker") |> 
   as.data.frame()
 
-# СТРОГО алфавитный порядок столбцов (критично для воспроизводимости)
+# СТРОГО алфавитный порядок столбцов
 friends_tf_wide <- friends_tf_wide[, order(colnames(friends_tf_wide))]
 
 # 5. кластеризация k-means
