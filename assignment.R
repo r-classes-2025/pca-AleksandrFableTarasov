@@ -28,12 +28,16 @@ friends_tokens <- friends |>
 friends_tf <- friends_tokens |>
   count(speaker, word, name = "n_words") |> 
   group_by(speaker) |> 
-  # ВАЖНО: slice_max сохраняет связи при одинаковых частотах
+  # CRITICAL: Use slice_max with ties.method = "first" to ensure exact 500
   slice_max(order_by = n_words, n = 500, with_ties = FALSE) |> 
+  # Ensure exactly 500 rows per speaker
+  slice_head(n = 500) |> 
   mutate(tf = n_words / sum(n_words)) |> 
   ungroup() |> 
-  # Убираем столбец n_words, оставляем только speaker, word, tf
   select(speaker, word, tf)
+
+# Проверка: должно быть ровно 6*500 = 3000 строк
+print(paste("Rows in friends_tf:", nrow(friends_tf)))
 
 # 4. преобразуйте в широкий формат; 
 # столбец c именем спикера превратите в имя ряда, используя подходящую функцию 
@@ -43,9 +47,12 @@ friends_tf_wide <- friends_tf |>
     values_from = tf, 
     values_fill = 0
   ) |> 
-  # Должен остаться data.frame, не matrix!
   as.data.frame() |> 
   column_to_rownames("speaker")
+
+# Проверка размеров
+print(paste("Dimensions of friends_tf_wide:", 
+            nrow(friends_tf_wide), "x", ncol(friends_tf_wide)))
 
 # 5. установите зерно 123
 # проведите кластеризацию k-means (k = 3) на относительных значениях частотности (nstart = 20)
@@ -79,8 +86,7 @@ q <- fviz_pca_biplot(
   geom_text(
     aes(label = rownames(friends_tf_wide)),
     size = 5,
-    fontface = "bold",
-    vjust = -0.5
+    fontface = "bold"
   ) +
   labs(
     title = "PCA Biplot: Лексические особенности персонажей Friends",
