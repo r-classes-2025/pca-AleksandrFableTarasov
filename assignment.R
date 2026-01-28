@@ -20,7 +20,7 @@ friends_tokens <- friends |>
   filter(speaker %in% top_speakers) |> 
   unnest_tokens(word, text) |> 
   mutate(word = str_remove_all(word, "\\d+")) |> 
-  filter(word != "") |> 
+  filter(word != "", str_length(word) > 1) |>  # убираем однобуквенные слова
   select(speaker, word)
 
 # 3. отберите по 500 самых частотных слов для каждого персонажа
@@ -28,16 +28,12 @@ friends_tokens <- friends |>
 friends_tf <- friends_tokens |>
   count(speaker, word, name = "n_words") |> 
   group_by(speaker) |> 
-  # CRITICAL: Use slice_max with ties.method = "first" to ensure exact 500
-  slice_max(order_by = n_words, n = 500, with_ties = FALSE) |> 
-  # Ensure exactly 500 rows per speaker
+  # Сортируем по частоте, а при равенстве - по алфавиту для воспроизводимости
+  arrange(desc(n_words), word, .by_group = TRUE) |> 
   slice_head(n = 500) |> 
   mutate(tf = n_words / sum(n_words)) |> 
   ungroup() |> 
   select(speaker, word, tf)
-
-# Проверка: должно быть ровно 6*500 = 3000 строк
-print(paste("Rows in friends_tf:", nrow(friends_tf)))
 
 # 4. преобразуйте в широкий формат; 
 # столбец c именем спикера превратите в имя ряда, используя подходящую функцию 
@@ -50,9 +46,8 @@ friends_tf_wide <- friends_tf |>
   as.data.frame() |> 
   column_to_rownames("speaker")
 
-# Проверка размеров
-print(paste("Dimensions of friends_tf_wide:", 
-            nrow(friends_tf_wide), "x", ncol(friends_tf_wide)))
+# Упорядочиваем столбцы по алфавиту для воспроизводимости
+friends_tf_wide <- friends_tf_wide[, order(colnames(friends_tf_wide))]
 
 # 5. установите зерно 123
 # проведите кластеризацию k-means (k = 3) на относительных значениях частотности (nstart = 20)
@@ -94,5 +89,4 @@ q <- fviz_pca_biplot(
   ) +
   theme_minimal()
 
-# Выведите график
 print(q)
